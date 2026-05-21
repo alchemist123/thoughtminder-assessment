@@ -142,6 +142,15 @@ const submitExam = async (candidateExamId, candidateId) => {
   const submitted_at = new Date();
   await candidateExam.update({ status: 'submitted', submitted_at, score });
 
+  // Mark the exam as completed if all assigned candidates have now submitted
+  const [totalAssigned, totalSubmitted] = await Promise.all([
+    CandidateExam.count({ where: { exam_id: candidateExam.exam_id } }),
+    CandidateExam.count({ where: { exam_id: candidateExam.exam_id, status: 'submitted' } }),
+  ]);
+  if (totalAssigned > 0 && totalAssigned === totalSubmitted) {
+    await Exam.update({ status: 'completed' }, { where: { id: candidateExam.exam_id } });
+  }
+
   return { score, submitted_at };
 };
 
