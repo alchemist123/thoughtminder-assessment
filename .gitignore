@@ -1,0 +1,25 @@
+# environment — never commit secrets
+.env
+.env.*
+!.env.example
+
+# dependencies
+node_modules/
+
+# build outputs
+dist/
+build/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# logs
+*.log
+npm-debug.log*
+
+# misc
+coverage/
+.cache/
