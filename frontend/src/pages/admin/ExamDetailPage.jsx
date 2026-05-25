@@ -15,7 +15,6 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { LaunchExamDialog } from '@/components/admin/LaunchExamDialog';
-import { PasscodeResultDialog } from '@/components/admin/PasscodeResultDialog';
 import { MalpracticeDrawer } from '@/components/admin/MalpracticeDrawer';
 import { EmptyState } from '@/components/EmptyState';
 import { useToast } from '@/hooks/use-toast';
@@ -147,31 +146,38 @@ export function ExamDetailPage() {
     }
   }, [currentExam?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // When launch succeeds: refresh exam + candidates
+  // When launch succeeds: refresh exam + candidates, then clear result
   useEffect(() => {
     if (launchResult) {
       fetchExam(examId);
       fetchCandidates();
+      toast({
+        title: 'Exam launched',
+        description: `${launchResult.length} candidate${launchResult.length !== 1 ? 's' : ''} assigned. Share the exam URL with them.`,
+      });
+      clearLaunchResult();
     }
   }, [launchResult]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const exportPasscodeCSV = () => {
-    const header = 'Name,Email,Passcode,Access Link';
+  const examUrl = `${window.location.origin}/exam/${examId}`;
+
+  const exportCandidatesCSV = () => {
+    const header = 'Name,Email,Status,Score';
     const rows = candidates.map(
       (r) =>
-        `"${r.candidate?.name ?? ''}","${r.candidate?.email ?? ''}","${r.passcode}","${r.access_link}"`
+        `"${r.candidate?.name ?? ''}","${r.candidate?.email ?? ''}","${r.status}","${r.score ?? ''}"`
     );
     const csv = [header, ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
     a.href = url;
-    a.download = `passcodes-${examId}.csv`;
+    a.download = `candidates-${examId}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    toast({ title: 'CSV downloaded', description: 'Passcodes exported.' });
+    toast({ title: 'CSV downloaded' });
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -288,10 +294,19 @@ export function ExamDetailPage() {
 
         {/* ── Candidates tab ─────────────────────────────────────────── */}
         <TabsContent value="candidates" className="mt-0">
+          {/* Exam access URL — shared by all candidates */}
+          {currentExam?.status !== 'draft' && (
+            <div className="mb-4 flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
+              <span className="text-xs text-muted-foreground shrink-0">Exam URL:</span>
+              <span className="flex-1 truncate text-xs font-mono">{examUrl}</span>
+              <CopyButton text={examUrl} />
+            </div>
+          )}
+
           {candidates.length > 0 && (
-            <div className="mb-4 flex justify-end">
-              <Button variant="outline" size="sm" onClick={exportPasscodeCSV}>
-                Copy All Passcodes (CSV)
+            <div className="mb-3 flex justify-end">
+              <Button variant="outline" size="sm" onClick={exportCandidatesCSV}>
+                Export CSV
               </Button>
             </div>
           )}
@@ -302,8 +317,6 @@ export function ExamDetailPage() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
-                  <TableHead className="w-32">Passcode</TableHead>
-                  <TableHead>Access Link</TableHead>
                   <TableHead className="w-28">Status</TableHead>
                   <TableHead className="w-20 text-right">Score</TableHead>
                   <TableHead className="w-24">Malpractice</TableHead>
@@ -314,7 +327,7 @@ export function ExamDetailPage() {
                 {candidatesLoading
                   ? Array.from({ length: 5 }).map((_, i) => (
                       <TableRow key={i}>
-                        {Array.from({ length: 8 }).map((_, j) => (
+                        {Array.from({ length: 6 }).map((_, j) => (
                           <TableCell key={j}>
                             <Skeleton className="h-4 w-full" />
                           </TableCell>
@@ -324,10 +337,10 @@ export function ExamDetailPage() {
                   : candidates.length === 0
                   ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="p-0">
+                      <TableCell colSpan={6} className="p-0">
                         <EmptyState
                           title="No candidates assigned"
-                          description="Launch this exam to assign candidates and generate passcodes."
+                          description="Launch this exam to assign candidates."
                         />
                       </TableCell>
                     </TableRow>
@@ -341,19 +354,6 @@ export function ExamDetailPage() {
                           </TableCell>
                           <TableCell className="text-muted-foreground">
                             {r.candidate?.email ?? '—'}
-                          </TableCell>
-                          <TableCell>
-                            <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">
-                              {r.passcode}
-                            </code>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex max-w-[200px] items-center gap-1">
-                              <span className="truncate text-xs text-muted-foreground">
-                                {r.access_link}
-                              </span>
-                              <CopyButton text={r.access_link} />
-                            </div>
                           </TableCell>
                           <TableCell>
                             <CandidateStatusBadge status={r.status} />
@@ -420,16 +420,6 @@ export function ExamDetailPage() {
         preSelectedIds={preSelectedCandidateIds}
       />
 
-      {/* Passcode result dialog (shown after launch) */}
-      {launchResult && (
-        <PasscodeResultDialog
-          open={Boolean(launchResult)}
-          onOpenChange={(open) => {
-            if (!open) clearLaunchResult();
-          }}
-          results={launchResult}
-        />
-      )}
     </div>
   );
 }

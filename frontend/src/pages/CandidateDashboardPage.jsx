@@ -131,8 +131,7 @@ export function CandidateDashboardPage() {
     if (record.status === 'started') {
       navigate(`/exam/${examId}/take`);
     } else {
-      const url = record.access_link ?? `/exam/${examId}`;
-      navigate(url.startsWith('http') ? `/exam/${examId}` : url);
+      navigate(`/exam/${examId}`);
     }
   };
 
