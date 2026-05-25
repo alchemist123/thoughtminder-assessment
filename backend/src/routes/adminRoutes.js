@@ -265,6 +265,17 @@ router.get(
   examController.reviewCandidateExam
 );
 
+router.put(
+  '/candidate-exams/:candidateExamId/grade-written/:questionId',
+  [
+    ...candidateExamId,
+    param('questionId').isUUID().withMessage('Invalid question ID'),
+    body('is_correct').isBoolean().withMessage('is_correct must be a boolean'),
+  ],
+  validate,
+  examController.gradeWrittenAnswer
+);
+
 router.delete('/exams/:id', examId, validate, examController.deleteExam);
 router.get('/exams/:id', examId, validate, examController.getExam);
 

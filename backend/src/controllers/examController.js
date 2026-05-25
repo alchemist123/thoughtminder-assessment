@@ -91,6 +91,18 @@ const reviewCandidateExam = asyncHandler(async (req, res) => {
   return successResponse(res, review, 'Submission review retrieved');
 });
 
+// PUT /api/admin/candidate-exams/:candidateExamId/grade-written/:questionId
+const gradeWrittenAnswer = asyncHandler(async (req, res) => {
+  const { candidateExamId, questionId } = req.params;
+  const { is_correct } = req.body;
+  const result = await submissionReviewService.gradeWrittenAnswer(
+    candidateExamId,
+    questionId,
+    is_correct
+  );
+  return successResponse(res, result, 'Answer graded');
+});
+
 module.exports = {
   createExam,
   listExams,
@@ -100,4 +112,5 @@ module.exports = {
   getResults,
   deleteExam,
   reviewCandidateExam,
+  gradeWrittenAnswer,
 };

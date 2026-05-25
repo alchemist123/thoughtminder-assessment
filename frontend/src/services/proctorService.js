@@ -14,3 +14,11 @@ export const getCandidateReview = async (candidateExamId) => {
   const { data } = await api.get(`/admin/candidate-exams/${candidateExamId}/review`);
   return data.data;
 };
+
+export const gradeWrittenAnswer = async (candidateExamId, questionId, isCorrect) => {
+  const { data } = await api.put(
+    `/admin/candidate-exams/${candidateExamId}/grade-written/${questionId}`,
+    { is_correct: isCorrect }
+  );
+  return data.data;
+};

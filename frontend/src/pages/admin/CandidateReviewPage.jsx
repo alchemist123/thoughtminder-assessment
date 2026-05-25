@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle, CheckCircle2, XCircle, MinusCircle } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, CheckCircle2, XCircle, MinusCircle, Loader2 } from 'lucide-react';
 import Editor from '@monaco-editor/react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { MalpracticeDrawer } from '@/components/admin/MalpracticeDrawer';
-import { getCandidateReview } from '@/services/proctorService';
+import { getCandidateReview, gradeWrittenAnswer } from '@/services/proctorService';
 import { cn } from '@/lib/utils';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -120,13 +120,28 @@ function McqCard({ num, sub }) {
   );
 }
 
-function WrittenCard({ num, sub }) {
+function WrittenCard({ num, sub, onGrade }) {
   const q = sub.question;
   const a = sub.answer;
   const notAttempted = !a.answer_text?.trim();
+  const [grading, setGrading] = useState(false);
+  const [localCorrect, setLocalCorrect] = useState(a.is_correct ?? null);
+
+  const handleGrade = async (isCorrect) => {
+    setGrading(true);
+    try {
+      await onGrade(q.id, isCorrect);
+      setLocalCorrect(isCorrect);
+    } finally {
+      setGrading(false);
+    }
+  };
 
   return (
-    <Card>
+    <Card className={cn(
+      localCorrect === true && 'border-green-300',
+      localCorrect === false && 'border-red-300',
+    )}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -134,12 +149,23 @@ function WrittenCard({ num, sub }) {
             <Badge variant="outline" className="text-xs capitalize">{q.section}</Badge>
             <DifficultyBadge difficulty={q.difficulty} />
           </div>
-          <span className={cn(
-            'shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium',
-            notAttempted ? 'bg-muted text-muted-foreground' : 'bg-blue-100 text-blue-700'
-          )}>
-            {notAttempted ? <><MinusCircle className="h-3 w-3" /> Not Attempted</> : 'Answered'}
-          </span>
+          {notAttempted ? (
+            <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+              <MinusCircle className="h-3 w-3" /> Not Attempted
+            </span>
+          ) : localCorrect === true ? (
+            <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
+              <CheckCircle2 className="h-3 w-3" /> Correct ✓
+            </span>
+          ) : localCorrect === false ? (
+            <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">
+              <XCircle className="h-3 w-3" /> Incorrect ✗
+            </span>
+          ) : (
+            <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+              Pending Review
+            </span>
+          )}
         </div>
         <p className="mt-2 text-sm leading-relaxed">{q.question_text}</p>
       </CardHeader>
@@ -154,12 +180,58 @@ function WrittenCard({ num, sub }) {
             )}
           </div>
         </div>
+
         {q.correct_answer && (
           <div>
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">Model Answer</p>
             <div className="min-h-[60px] rounded-md border border-green-200 bg-green-50 px-3 py-2">
               <pre className="whitespace-pre-wrap text-sm font-sans leading-relaxed text-green-900">{q.correct_answer}</pre>
             </div>
+          </div>
+        )}
+
+        {/* Grading buttons — only show if the candidate actually answered */}
+        {!notAttempted && (
+          <div className="flex items-center gap-2 pt-1 border-t">
+            <span className="text-xs text-muted-foreground mr-1">Mark as:</span>
+            <Button
+              size="sm"
+              variant={localCorrect === true ? 'default' : 'outline'}
+              className={cn(
+                'h-7 gap-1.5 text-xs',
+                localCorrect === true
+                  ? 'bg-green-600 hover:bg-green-700 text-white border-green-600'
+                  : 'border-green-400 text-green-700 hover:bg-green-50'
+              )}
+              onClick={() => handleGrade(true)}
+              disabled={grading}
+            >
+              {grading && localCorrect !== true ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-3.5 w-3.5" />
+              )}
+              Correct
+            </Button>
+            <Button
+              size="sm"
+              variant={localCorrect === false ? 'default' : 'outline'}
+              className={cn(
+                'h-7 gap-1.5 text-xs',
+                localCorrect === false
+                  ? 'bg-red-600 hover:bg-red-700 text-white border-red-600'
+                  : 'border-red-400 text-red-700 hover:bg-red-50'
+              )}
+              onClick={() => handleGrade(false)}
+              disabled={grading}
+            >
+              {grading && localCorrect !== false ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <XCircle className="h-3.5 w-3.5" />
+              )}
+              Incorrect
+            </Button>
           </div>
         )}
       </CardContent>
@@ -336,6 +408,14 @@ export function CandidateReviewPage() {
 
   const orderedSections = SECTION_ORDER.filter((s) => bySection[s]?.length > 0);
 
+  const handleGradeWritten = useCallback(async (questionId, isCorrect) => {
+    const result = await gradeWrittenAnswer(candidateExamId, questionId, isCorrect);
+    setReview((prev) => ({
+      ...prev,
+      summary: { ...prev.summary, final_score: result.new_score },
+    }));
+  }, [candidateExamId]);
+
   // Global question number counter
   let qCounter = 0;
 
@@ -414,7 +494,7 @@ export function CandidateReviewPage() {
                   if (sub.question.type === 'coding') {
                     return <CodingCard key={sub.question.id} num={num} sub={sub} />;
                   }
-                  return <WrittenCard key={sub.question.id} num={num} sub={sub} />;
+                  return <WrittenCard key={sub.question.id} num={num} sub={sub} onGrade={handleGradeWritten} />;
                 })}
               </TabsContent>
             ))}
