@@ -1,0 +1,38 @@
+x-logging:
+  &default-logging
+  logging:
+    driver: json-file
+    options:
+      max-size: 50M
+
+services:
+  backend:
+    build:
+      context: ./backend
+    env_file: ./backend/.env
+    ports:
+      - "5002:5000"
+    restart: always
+    <<: *default-logging
+    networks:
+      - app
+      - judge0_default
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: https://api.thoughtminder.binarybit.in/api
+    ports:
+      - "5174:80"
+    restart: always
+    depends_on:
+      - backend
+    <<: *default-logging
+    networks:
+      - app
+
+networks:
+  app:
+  judge0_default:
+    external: true
