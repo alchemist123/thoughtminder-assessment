@@ -47,7 +47,7 @@ const startExam = async (examId, candidateId) => {
   }
 
   const exam = await Exam.findByPk(examId);
-  if (exam.status !== 'active') {
+  if (!exam || exam.status !== 'active') {
     throw new AppError('This exam is not currently active', 403);
   }
 

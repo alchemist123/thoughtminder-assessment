@@ -1,5 +1,5 @@
 'use strict';
-const { ValidationError, UniqueConstraintError } = require('sequelize');
+const { ValidationError, UniqueConstraintError, DatabaseError, ForeignKeyConstraintError } = require('sequelize');
 const { JsonWebTokenError, TokenExpiredError } = require('jsonwebtoken');
 const AppError = require('../utils/AppError');
 
@@ -36,6 +36,18 @@ const errorHandler = (err, _req, res, _next) => {
   // Known operational error created with AppError
   if (err instanceof AppError && err.isOperational) {
     return res.status(err.statusCode).json({ success: false, message: err.message });
+  }
+
+  // Sequelize FK violation (e.g. referencing a deleted record)
+  if (err instanceof ForeignKeyConstraintError) {
+    console.error('[FK constraint error]', err.message);
+    return res.status(409).json({ success: false, message: 'A referenced record no longer exists.' });
+  }
+
+  // Generic Sequelize DB error (connection issues, bad queries, etc.)
+  if (err instanceof DatabaseError) {
+    console.error('[Database error]', err.message);
+    return res.status(500).json({ success: false, message: `Database error: ${err.message}` });
   }
 
   // Unknown / programmer errors — never leak internals
