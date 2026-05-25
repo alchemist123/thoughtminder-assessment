@@ -6,8 +6,8 @@ const asyncHandler = require('../utils/asyncHandler');
 
 // POST /api/exam/start
 const startExam = asyncHandler(async (req, res) => {
-  const { exam_id, passcode } = req.body;
-  const result = await examSessionService.startExam(exam_id, passcode, req.user.id);
+  const { exam_id } = req.body;
+  const result = await examSessionService.startExam(exam_id, req.user.id);
   const message = result.resumed ? 'Exam session resumed' : 'Exam started';
   return successResponse(res, result, message);
 });

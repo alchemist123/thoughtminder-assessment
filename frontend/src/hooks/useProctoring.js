@@ -146,6 +146,9 @@ export function useProctoring({ candidateExamId, examId }) {
   }, [runDetection]);
 
   // ── Tab-switch detection ───────────────────────────────────────────────────
+  // visibilitychange is the most reliable cross-browser signal for actual tab
+  // switches. We also listen to window.blur for app-switches (e.g. alt-tab),
+  // but deduplicate within 500 ms so only one event is logged per focus loss.
 
   useEffect(() => {
     const onVisibilityChange = () => {
@@ -153,8 +156,14 @@ export function useProctoring({ candidateExamId, examId }) {
         logTabSwitch(captureSnapshot());
       }
     };
+    const onBlur = () => logTabSwitch(captureSnapshot());
+
     document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('blur', onBlur);
+    };
   }, [logTabSwitch, captureSnapshot]);
 
   return { videoRef, cameraReady, cameraError, isMonitoring, violationCount, sendLog, logTabSwitch, captureSnapshot };

@@ -170,24 +170,14 @@ const launchExam = async (examId, candidateIds) => {
     throw new AppError(`Candidates not found or not valid: ${missing.join(', ')}`, 404);
   }
 
-  // Collect unique passcodes using a Set to guarantee no duplicates in this batch
-  const passcodes = new Set();
-  while (passcodes.size < candidates.length) {
-    const bytes = crypto.randomBytes(8);
-    passcodes.add(Array.from(bytes, (b) => PASSCODE_CHARS[b % PASSCODE_CHARS.length]).join(''));
-  }
-  const passcodeList = [...passcodes];
-
   const now = new Date();
   const t   = await sequelize.transaction();
   try {
     await CandidateExam.bulkCreate(
-      candidates.map((c, i) => ({
-        exam_id:     examId,
+      candidates.map((c) => ({
+        exam_id:      examId,
         candidate_id: c.id,
-        passcode:    passcodeList[i],
-        access_link: `${process.env.FRONTEND_URL}/exam/${examId}?passcode=${passcodeList[i]}`,
-        status:      'pending',
+        status:       'pending',
       })),
       { transaction: t }
     );
@@ -198,10 +188,9 @@ const launchExam = async (examId, candidateIds) => {
     throw err;
   }
 
-  return candidates.map((c, i) => ({
+  return candidates.map((c) => ({
     candidate:   { id: c.id, name: c.name, email: c.email },
-    passcode:    passcodeList[i],
-    access_link: `${process.env.FRONTEND_URL}/exam/${examId}?passcode=${passcodeList[i]}`,
+    access_link: `${process.env.FRONTEND_URL}/exam/${examId}`,
   }));
 };
 

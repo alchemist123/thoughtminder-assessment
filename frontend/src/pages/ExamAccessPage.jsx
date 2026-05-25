@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   ClipboardList, AlertCircle, Clock, Monitor, ShieldAlert,
-  CheckCircle2, ChevronRight, Eye, Wifi,
+  CheckCircle2, ChevronRight, Eye, Wifi, Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import api from '@/lib/axios';
@@ -21,35 +19,34 @@ const SECTION_LABEL = {
 };
 
 const RULES = [
-  { icon: Monitor,    text: 'Do not switch tabs or open other applications during the exam. Each violation is recorded.' },
-  { icon: Eye,        text: 'Your camera is active throughout the exam. Ensure your face is clearly visible at all times.' },
-  { icon: Clock,      text: 'The timer starts immediately. The exam auto-submits when time runs out.' },
-  { icon: Wifi,       text: 'Ensure a stable internet connection. Answers are saved continuously.' },
+  { icon: Monitor,     text: 'Do not switch tabs or open other applications during the exam. Each violation is recorded.' },
+  { icon: Eye,         text: 'Your camera is active throughout the exam. Ensure your face is clearly visible at all times.' },
+  { icon: Clock,       text: 'The timer starts immediately. The exam auto-submits when time runs out.' },
+  { icon: Wifi,        text: 'Ensure a stable internet connection. Answers are saved continuously.' },
   { icon: ShieldAlert, text: 'Use of mobile phones, notes, or external help is strictly prohibited.' },
   { icon: CheckCircle2, text: 'Once submitted, you cannot re-enter or change your answers.' },
 ];
 
 function classifyError(err) {
   const status = err?.response?.status;
-  const msg = err?.response?.data?.message ?? '';
-  if (status === 404) return 'Invalid passcode. Please check your access link or passcode.';
+  const msg    = err?.response?.data?.message ?? '';
+  if (status === 404) return 'You are not assigned to this exam. Please contact your administrator.';
   if (status === 403) {
     if (msg.toLowerCase().includes('submitted')) return 'This exam has already been submitted and cannot be restarted.';
-    if (msg.toLowerCase().includes('active')) return 'This exam is not currently active. Please contact your administrator.';
+    if (msg.toLowerCase().includes('active'))    return 'This exam is not currently active. Please contact your administrator.';
     return msg || 'Access denied.';
   }
   if (status === 401) return 'Please log in to access the exam.';
   return msg || 'Something went wrong. Please try again.';
 }
 
-// ── Instructions screen ────────────────────────────────────────────────────────
+// ── Instructions screen ───────────────────────────────────────────────────────
 
-function InstructionsScreen({ exam, examId, onStart }) {
+function InstructionsScreen({ exam, onStart }) {
   const [acknowledged, setAcknowledged] = useState(false);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
-      {/* Branding */}
       <div className="mb-6 flex flex-col items-center gap-2">
         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
           <ClipboardList className="h-6 w-6" />
@@ -58,7 +55,6 @@ function InstructionsScreen({ exam, examId, onStart }) {
       </div>
 
       <div className="w-full max-w-2xl space-y-4">
-        {/* Exam overview card */}
         <Card>
           <CardHeader className="pb-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -81,7 +77,6 @@ function InstructionsScreen({ exam, examId, onStart }) {
           </CardHeader>
         </Card>
 
-        {/* Rules card */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Exam Rules & Guidelines</CardTitle>
@@ -98,7 +93,6 @@ function InstructionsScreen({ exam, examId, onStart }) {
           </CardContent>
         </Card>
 
-        {/* Proctoring notice */}
         <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/40 dark:bg-amber-900/20">
           <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
           <p className="text-sm text-amber-800 dark:text-amber-300">
@@ -106,7 +100,6 @@ function InstructionsScreen({ exam, examId, onStart }) {
           </p>
         </div>
 
-        {/* Acknowledgement + Start */}
         <Card>
           <CardContent className="pt-5 space-y-4">
             <label className="flex cursor-pointer items-start gap-3">
@@ -120,12 +113,7 @@ function InstructionsScreen({ exam, examId, onStart }) {
                 I have read and understood all the instructions above. I agree to complete this exam honestly and without any external assistance.
               </span>
             </label>
-
-            <Button
-              className="w-full"
-              disabled={!acknowledged}
-              onClick={onStart}
-            >
+            <Button className="w-full" disabled={!acknowledged} onClick={onStart}>
               Start Exam
               <ChevronRight className="ml-1.5 h-4 w-4" />
             </Button>
@@ -136,127 +124,87 @@ function InstructionsScreen({ exam, examId, onStart }) {
   );
 }
 
-// ── Main page ──────────────────────────────────────────────────────────────────
+// ── Auto-start screen (renders after camera permission) ───────────────────────
+
+function AutoStartScreen({ examId, onExamReady }) {
+  const { initSession } = useExamSessionStore();
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const start = async () => {
+      try {
+        const { data } = await api.post('/exam/start', { exam_id: examId });
+        if (cancelled) return;
+        const { candidateExam, exam, existingAnswers } = data.data;
+        initSession(candidateExam, exam, existingAnswers ?? []);
+        onExamReady(exam);
+      } catch (err) {
+        if (!cancelled) setError(classifyError(err));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    start();
+    return () => { cancelled = true; };
+  }, [examId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background gap-4">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+          <ClipboardList className="h-6 w-6" />
+        </div>
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-sm">Preparing your exam…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-sm">
+          <CardHeader className="text-center pb-3">
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
+              <AlertCircle className="h-7 w-7 text-destructive" />
+            </div>
+            <CardTitle className="text-lg">Cannot Access Exam</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-center text-muted-foreground">{error}</p>
+            <Button variant="outline" className="w-full" onClick={() => window.location.reload()}>
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export function ExamAccessPage() {
   const { examId } = useParams();
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { initSession } = useExamSessionStore();
-
-  const [passcode, setPasscode] = useState(
-    (searchParams.get('passcode') ?? '').toUpperCase()
-  );
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [examInfo, setExamInfo] = useState(null); // set after passcode success
-
-  // If a passcode is pre-filled from the URL, auto-submit once on mount
-  useEffect(() => {
-    const pre = searchParams.get('passcode');
-    if (pre && examId) {
-      handleSubmitWithValues(examId, pre.toUpperCase());
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handlePasscodeChange = (e) => {
-    const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
-    setPasscode(value);
-    setError(null);
-  };
-
-  const handleSubmitWithValues = async (eid, pc) => {
-    if (!eid) {
-      setError('No exam ID found in the URL. Please use the link provided by your administrator.');
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const { data } = await api.post('/exam/start', { exam_id: eid, passcode: pc });
-      const { candidateExam, exam, existingAnswers } = data.data;
-      initSession(candidateExam, exam, existingAnswers ?? []);
-      setExamInfo(exam); // show instructions next
-    } catch (err) {
-      setError(classifyError(err));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    handleSubmitWithValues(examId, passcode);
-  };
+  const [examInfo, setExamInfo] = useState(null);
 
   const handleStartExam = () => {
     navigate(`/exam/${examId}/take`, { replace: true });
   };
 
-  // ── Both steps are inside CameraPermissionGate so camera is always granted first ──
   return (
     <CameraPermissionGate>
       {examInfo ? (
-        <InstructionsScreen
-          exam={examInfo}
-          examId={examId}
-          onStart={handleStartExam}
-        />
+        <InstructionsScreen exam={examInfo} onStart={handleStartExam} />
       ) : (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
-        {/* Branding */}
-        <div className="mb-8 flex flex-col items-center gap-2">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <ClipboardList className="h-6 w-6" />
-          </div>
-          <span className="text-lg font-semibold tracking-tight">ThoughtMinder Assessment</span>
-        </div>
-
-        <Card className="w-full max-w-sm">
-          <CardHeader className="text-center">
-            <CardTitle className="text-xl">Enter Exam Passcode</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Enter the 8-character passcode from your access link.
-            </p>
-          </CardHeader>
-
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="passcode">Passcode</Label>
-                <Input
-                  id="passcode"
-                  value={passcode}
-                  onChange={handlePasscodeChange}
-                  placeholder="XXXXXXXX"
-                  autoFocus
-                  autoComplete="off"
-                  maxLength={8}
-                  className="text-center font-mono text-lg tracking-[0.25em] uppercase"
-                />
-                <p className="text-xs text-muted-foreground text-center">
-                  {passcode.length} / 8 characters
-                </p>
-              </div>
-
-              {error && (
-                <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                  <p className="text-sm text-destructive">{error}</p>
-                </div>
-              )}
-
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={loading || passcode.length < 8}
-              >
-                {loading ? 'Verifying…' : 'Verify Passcode'}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
+        <AutoStartScreen examId={examId} onExamReady={setExamInfo} />
       )}
     </CameraPermissionGate>
   );

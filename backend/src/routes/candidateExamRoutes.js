@@ -9,10 +9,7 @@ const router = Router();
 // POST /api/exam/start
 router.post(
   '/start',
-  [
-    body('exam_id').isUUID().withMessage('exam_id must be a valid UUID'),
-    body('passcode').trim().notEmpty().withMessage('passcode is required'),
-  ],
+  [body('exam_id').isUUID().withMessage('exam_id must be a valid UUID')],
   validate,
   controller.startExam
 );

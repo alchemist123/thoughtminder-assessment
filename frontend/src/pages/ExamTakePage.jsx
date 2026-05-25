@@ -39,7 +39,7 @@ export function ExamTakePage() {
   const [tabSwitchOverlay, setTabSwitchOverlay] = useState(false);
   const overlayTimeoutRef = useRef(null);
 
-  const { videoRef, cameraReady, isMonitoring, violationCount, sendLog, logTabSwitch, captureSnapshot } = useProctoring({
+  const { videoRef, cameraReady, isMonitoring, violationCount, sendLog } = useProctoring({
     candidateExamId: candidateExam?.id,
     examId: exam?.id,
   });
@@ -58,21 +58,25 @@ export function ExamTakePage() {
     }
   }, [isSubmitted, isTimeUp, navigate]);
 
-  // Tab-switch overlay via window blur
+  // Tab-switch overlay — shown when the window loses focus or tab becomes hidden.
+  // Actual malpractice logging is handled inside useProctoring via visibilitychange + blur.
   useEffect(() => {
-    const onBlur = () => {
+    const showOverlay = () => {
       setTabSwitchOverlay(true);
-      // blur fires before visibilitychange, so capture snapshot here first
-      logTabSwitch(captureSnapshot());
       clearTimeout(overlayTimeoutRef.current);
       overlayTimeoutRef.current = setTimeout(() => setTabSwitchOverlay(false), 3000);
     };
-    window.addEventListener('blur', onBlur);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') showOverlay();
+    };
+    window.addEventListener('blur', showOverlay);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
-      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('blur', showOverlay);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       clearTimeout(overlayTimeoutRef.current);
     };
-  }, [logTabSwitch, captureSnapshot]);
+  }, []);
 
   // Block keyboard shortcuts and context menu
   useEffect(() => {

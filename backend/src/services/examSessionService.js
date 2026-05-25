@@ -36,12 +36,11 @@ const sanitizeForCandidate = (exam) => {
 
 // ── Service functions ─────────────────────────────────────────────────────
 
-// candidateId is the authenticated user's id — used to verify ownership of the passcode.
-const startExam = async (examId, passcode, candidateId) => {
+const startExam = async (examId, candidateId) => {
   const candidateExam = await CandidateExam.findOne({
-    where: { exam_id: examId, passcode, candidate_id: candidateId },
+    where: { exam_id: examId, candidate_id: candidateId },
   });
-  if (!candidateExam) throw new AppError('Invalid exam, passcode, or access not granted', 404);
+  if (!candidateExam) throw new AppError('You are not assigned to this exam', 404);
 
   if (candidateExam.status === 'submitted') {
     throw new AppError('This exam has already been submitted and cannot be restarted', 403);
