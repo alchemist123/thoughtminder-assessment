@@ -126,7 +126,7 @@ export function MalpracticeDrawer({ open, onOpenChange, candidateExamId, candida
       setLogs([]);
       try {
         const data = await getMalpracticeForCandidate(candidateExamId);
-        if (!cancelled) setLogs(data?.logs ?? []);
+        if (!cancelled) setLogs(Array.isArray(data) ? data : (data?.logs ?? []));
       } catch {
         // silently ignore — empty state shown
       } finally {

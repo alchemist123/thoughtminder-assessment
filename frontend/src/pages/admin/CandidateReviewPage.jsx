@@ -375,6 +375,14 @@ export function CandidateReviewPage() {
     return () => { cancelled = true; };
   }, [candidateExamId]);
 
+  const handleGradeWritten = useCallback(async (questionId, isCorrect) => {
+    const result = await gradeWrittenAnswer(candidateExamId, questionId, isCorrect);
+    setReview((prev) => ({
+      ...prev,
+      summary: { ...prev.summary, final_score: result.new_score },
+    }));
+  }, [candidateExamId]);
+
   if (loading) {
     return (
       <div className="space-y-4 p-6">
@@ -407,14 +415,6 @@ export function CandidateReviewPage() {
   }
 
   const orderedSections = SECTION_ORDER.filter((s) => bySection[s]?.length > 0);
-
-  const handleGradeWritten = useCallback(async (questionId, isCorrect) => {
-    const result = await gradeWrittenAnswer(candidateExamId, questionId, isCorrect);
-    setReview((prev) => ({
-      ...prev,
-      summary: { ...prev.summary, final_score: result.new_score },
-    }));
-  }, [candidateExamId]);
 
   // Global question number counter
   let qCounter = 0;
