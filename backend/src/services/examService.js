@@ -177,6 +177,7 @@ const launchExam = async (examId, candidateIds) => {
       candidates.map((c) => ({
         exam_id:      examId,
         candidate_id: c.id,
+        passcode:     crypto.randomBytes(4).toString('hex').toUpperCase(),
         status:       'pending',
       })),
       { transaction: t }
