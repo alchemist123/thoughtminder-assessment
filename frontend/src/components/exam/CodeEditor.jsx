@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
-import { Play, Upload, Copy, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { Play, Upload, Copy, ChevronDown, ChevronRight, Loader2, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
@@ -192,7 +192,9 @@ function ConfirmSubmitOverlay({ onConfirm, onCancel }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
-  const { codeByQuestion, saveCode, saveCodeResult } = useExamSessionStore();
+  const { codeByQuestion, saveCode, saveCodeResult, answers, codeResults } = useExamSessionStore();
+
+  const isSubmitted = answers[question.id]?.code_submitted === true;
 
   // Initialise language from question boilerplate or defaults
   const [activeLanguage, setActiveLanguage] = useState('python');
@@ -206,6 +208,15 @@ export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
 
   const editorRef = useRef(null);
   const autoSaveRef = useRef(null);
+
+  // Restore last submit result from persisted store on mount (e.g. page reload)
+  useEffect(() => {
+    if (isSubmitted && codeResults[question.id]) {
+      setSubmitResult(codeResults[question.id]);
+      setOutputType('submit');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Code state helpers ─────────────────────────────────────────────────────
 
@@ -225,6 +236,7 @@ export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
   // ── Auto-save every 30 seconds ──────────────────────────────────────────────
 
   useEffect(() => {
+    if (isSubmitted) return;
     autoSaveRef.current = setInterval(() => {
       const code = editorRef.current?.getValue();
       if (code != null) {
@@ -233,12 +245,12 @@ export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
       }
     }, 30_000);
     return () => clearInterval(autoSaveRef.current);
-  }, [activeLanguage, question.id, saveCode]);
+  }, [activeLanguage, isSubmitted, question.id, saveCode]);
 
   // ── Language switch ─────────────────────────────────────────────────────────
 
   const handleLanguageChange = (lang) => {
-    // Save current code before switching
+    if (isSubmitted) return;
     const code = getCurrentCode();
     saveCode(question.id, activeLanguage, code);
     setActiveLanguage(lang);
@@ -347,11 +359,13 @@ export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
                 <TabsTrigger
                   key={lang}
                   value={lang}
+                  disabled={isSubmitted}
                   className={cn(
                     'rounded-none border-b-2 border-transparent px-4 py-1.5 text-xs font-medium',
                     'data-[state=active]:border-blue-500 data-[state=active]:text-blue-400',
                     'data-[state=active]:bg-transparent data-[state=inactive]:text-zinc-400',
-                    'hover:text-zinc-200 transition-colors'
+                    'hover:text-zinc-200 transition-colors',
+                    isSubmitted && 'pointer-events-none opacity-60'
                   )}
                 >
                   {LANGUAGE_LABELS[lang]}
@@ -380,6 +394,8 @@ export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
               renderLineHighlight: 'line',
               fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
               fontLigatures: true,
+              readOnly: isSubmitted,
+              domReadOnly: isSubmitted,
             }}
           />
         </div>
@@ -393,42 +409,49 @@ export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
 
         {/* Action bar */}
         <div className="flex items-center justify-between border-t border-zinc-700/50 bg-zinc-900 px-3 py-2 shrink-0">
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 border-zinc-600 bg-transparent text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 text-xs"
-              onClick={handleRun}
-              disabled={isLoading}
-            >
-              {runLoading ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Play className="mr-1.5 h-3.5 w-3.5 fill-current" />
-              )}
-              Run
-            </Button>
-
-            <Button
-              size="sm"
-              className="h-7 text-xs bg-blue-600 hover:bg-blue-500"
-              onClick={() => setShowConfirm(true)}
-              disabled={isLoading}
-            >
-              {submitLoading ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Upload className="mr-1.5 h-3.5 w-3.5" />
-              )}
-              Submit Code
-            </Button>
-
-            <span className="hidden text-xs text-zinc-500 sm:inline">
-              Ctrl+Enter to Run
+          {isSubmitted ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/15 px-3 py-1 text-xs font-medium text-green-400">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Code Submitted — read-only view
             </span>
-          </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 border-zinc-600 bg-transparent text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 text-xs"
+                onClick={handleRun}
+                disabled={isLoading}
+              >
+                {runLoading ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Play className="mr-1.5 h-3.5 w-3.5 fill-current" />
+                )}
+                Run
+              </Button>
 
-          {lastSaved && (
+              <Button
+                size="sm"
+                className="h-7 text-xs bg-blue-600 hover:bg-blue-500"
+                onClick={() => setShowConfirm(true)}
+                disabled={isLoading}
+              >
+                {submitLoading ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Upload className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                Submit Code
+              </Button>
+
+              <span className="hidden text-xs text-zinc-500 sm:inline">
+                Ctrl+Enter to Run
+              </span>
+            </div>
+          )}
+
+          {!isSubmitted && lastSaved && (
             <span className="text-xs text-zinc-500">
               Saved {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>

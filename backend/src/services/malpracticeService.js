@@ -16,9 +16,6 @@ const logEvent = async ({
 }) => {
   const session = await CandidateExam.findByPk(candidate_exam_id);
   if (!session) throw new AppError('Candidate exam session not found', 404);
-  if (session.status !== 'started') {
-    throw new AppError('Malpractice events can only be logged for active sessions', 400);
-  }
 
   const log = await MalpracticeLog.create({
     candidate_exam_id,

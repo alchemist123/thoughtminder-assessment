@@ -45,6 +45,7 @@ export function useProctoring({ candidateExamId, examId }) {
   // ── Fire-and-forget log ────────────────────────────────────────────────────
 
   const logTabSwitch = useCallback((snapshot) => {
+    if (!candidateExamId || !examId) return; // IDs not yet available — skip
     const now = Date.now();
     if (now - lastTabSwitchRef.current < 500) return; // deduplicate blur + visibilitychange
     lastTabSwitchRef.current = now;
@@ -57,11 +58,14 @@ export function useProctoring({ candidateExamId, examId }) {
       payload.snapshot_base64 = snapshot.base64;
       payload.snapshot_mime   = snapshot.mime;
     }
-    api.post('/proctor/log', payload).catch(() => {});
+    api.post('/proctor/log', payload).catch((err) => {
+      console.warn('[proctor] tab_switch log failed:', err?.response?.status, err?.response?.data?.message ?? err?.message);
+    });
     setViolationCount((n) => n + 1);
   }, [candidateExamId, examId]);
 
   const sendLog = useCallback((type, snapshotData = null, extraMeta = null) => {
+    if (!candidateExamId || !examId) return;
     const payload = {
       candidate_exam_id: candidateExamId,
       exam_id:           examId,
@@ -73,7 +77,9 @@ export function useProctoring({ candidateExamId, examId }) {
     }
     if (extraMeta) payload.metadata = extraMeta;
 
-    api.post('/proctor/log', payload).catch(() => {/* fire-and-forget */});
+    api.post('/proctor/log', payload).catch((err) => {
+      console.warn('[proctor] log failed:', err?.response?.status, err?.response?.data?.message ?? err?.message);
+    });
     setViolationCount((n) => n + 1);
   }, [candidateExamId, examId]);
 
