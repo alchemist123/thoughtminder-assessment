@@ -121,21 +121,44 @@ const submitExam = async (candidateExamId, candidateId) => {
     throw new AppError('Cannot submit: exam is not currently in progress', 400);
   }
 
-  // Fetch all MCQ question ids for this exam
-  const mcqRows = await ExamQuestion.findAll({
+  // Fetch all questions for this exam to compute a unified score
+  const examQuestionsRaw = await ExamQuestion.findAll({
     where: { exam_id: candidateExam.exam_id },
-    include: [{ model: Question, as: 'question', where: { type: 'mcq' }, required: true }],
-    attributes: ['question_id'],
+    include: [{ model: Question, as: 'question', attributes: ['id', 'type'], required: true }],
   });
-  const totalMCQ = mcqRows.length;
-
+  const examQuestions  = examQuestionsRaw.map((eq) => eq.toJSON());
+  const totalQuestions = examQuestions.length;
   let score = 0;
-  if (totalMCQ > 0) {
-    const mcqIds      = mcqRows.map((r) => r.question_id);
-    const correctCount = await Submission.count({
-      where: { candidate_exam_id: candidateExamId, question_id: mcqIds, is_correct: true },
-    });
-    score = Number(((correctCount / totalMCQ) * 100).toFixed(2));
+
+  if (totalQuestions > 0) {
+    const mcqWrittenIds = examQuestions
+      .filter((eq) => ['mcq', 'written'].includes(eq.question?.type))
+      .map((eq) => eq.question_id);
+    const codingIds = examQuestions
+      .filter((eq) => eq.question?.type === 'coding')
+      .map((eq) => eq.question_id);
+
+    let totalCorrect = 0;
+
+    if (mcqWrittenIds.length > 0) {
+      totalCorrect += await Submission.count({
+        where: { candidate_exam_id: candidateExamId, question_id: mcqWrittenIds, is_correct: true },
+      });
+    }
+
+    if (codingIds.length > 0) {
+      const codingSubs = await Submission.findAll({
+        where: { candidate_exam_id: candidateExamId, question_id: codingIds },
+        attributes: ['score'],
+      });
+      // 10 pts = 1 full point, 5 pts = 0.5, 0 = 0
+      totalCorrect += codingSubs.reduce(
+        (sum, s) => sum + (s.score != null ? parseFloat(s.score) / 10 : 0),
+        0
+      );
+    }
+
+    score = Number(((totalCorrect / totalQuestions) * 100).toFixed(2));
   }
 
   const submitted_at = new Date();

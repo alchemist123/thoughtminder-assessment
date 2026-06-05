@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Send, AlertTriangle, Video, VideoOff } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Send, AlertTriangle, Video, VideoOff, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ExamTimer } from '@/components/exam/ExamTimer';
 import { SectionNav } from '@/components/exam/SectionNav';
@@ -31,11 +31,14 @@ export function ExamTakePage() {
     currentQuestionId,
     isSubmitted,
     isTimeUp,
+    timeRemaining,
     saveAnswer,
     setCurrentQuestion,
   } = useExamSessionStore();
 
   const [submitOpen, setSubmitOpen] = useState(false);
+  const [timeWarning, setTimeWarning] = useState(null); // '10min' | '5min' | null
+  const warningShownRef = useRef(new Set());
   const [tabSwitchOverlay, setTabSwitchOverlay] = useState(false);
   const overlayTimeoutRef = useRef(null);
 
@@ -78,6 +81,18 @@ export function ExamTakePage() {
     };
   }, []);
 
+  // Time warnings at 10 min and 5 min remaining
+  useEffect(() => {
+    if (timeRemaining == null) return;
+    if (timeRemaining <= 600 && timeRemaining > 590 && !warningShownRef.current.has('10min')) {
+      warningShownRef.current.add('10min');
+      setTimeWarning('10min');
+    } else if (timeRemaining <= 300 && timeRemaining > 290 && !warningShownRef.current.has('5min')) {
+      warningShownRef.current.add('5min');
+      setTimeWarning('5min');
+    }
+  }, [timeRemaining]);
+
   // Block keyboard shortcuts and context menu
   useEffect(() => {
     const onKeyDown = (e) => {
@@ -115,6 +130,9 @@ export function ExamTakePage() {
   const currentQuestion = questions.find((q) => q.id === currentQuestionId) ?? null;
   const currentIndex = questions.findIndex((q) => q.id === currentQuestionId);
   const totalAnswered = questions.filter((q) => isAnswered(answers[q.id])).length;
+
+  const codingQuestions = questions.filter((q) => q.section === 'coding');
+  const codingIndex = codingQuestions.findIndex((q) => q.id === currentQuestionId);
 
   const handlePrev = () => {
     if (currentIndex > 0) setCurrentQuestion(questions[currentIndex - 1].id);
@@ -223,19 +241,62 @@ export function ExamTakePage() {
         />
       </aside>
 
+      {/* Time warning banner */}
+      {timeWarning && (
+        <div className="fixed top-16 left-1/2 z-[500] -translate-x-1/2 flex items-center gap-2 rounded-lg border border-amber-400/60 bg-amber-950/95 px-4 py-3 text-sm text-amber-200 shadow-2xl backdrop-blur">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+          <span className="font-medium">
+            {timeWarning === '10min' ? '10 minutes remaining — start wrapping up!' : '⚠ Only 5 minutes left!'}
+          </span>
+          <button
+            onClick={() => setTimeWarning(null)}
+            className="ml-2 text-amber-400 hover:text-amber-100 transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* ── Main content ──────────────────────────────────────────────────── */}
       <main className="flex flex-col overflow-hidden">
         {currentQuestion?.type === 'coding' ? (
-          /* Coding question: full-height split-panel editor, no scroll */
-          <div className="flex-1 min-h-0">
-            <CodeEditor
-              question={currentQuestion}
-              candidateExamId={candidateExam.id}
-              onCodeSubmit={(result) => {
-                // saveCodeResult already marks code_submitted=true in the store
-                // via the saveCodeResult action; nothing extra needed here.
-              }}
-            />
+          /* Coding question: full-height editor + bottom nav */
+          <div className="flex flex-col flex-1 min-h-0">
+            <div className="flex-1 min-h-0">
+              <CodeEditor
+                question={currentQuestion}
+                candidateExamId={candidateExam.id}
+                onCodeSubmit={() => {}}
+              />
+            </div>
+            {/* Coding question navigation */}
+            <div className="flex items-center justify-between border-t border-zinc-700/50 bg-zinc-900 px-4 py-2 shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handlePrev}
+                disabled={currentIndex <= 0}
+                className="border-zinc-600 bg-transparent text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 h-7 text-xs"
+              >
+                <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+                Previous
+              </Button>
+              <span className="text-xs text-zinc-400">
+                Coding {codingIndex + 1} / {codingQuestions.length}
+                <span className="mx-1.5 text-zinc-600">·</span>
+                Q{currentIndex + 1} of {questions.length}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleNext}
+                disabled={currentIndex >= questions.length - 1}
+                className="border-zinc-600 bg-transparent text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 h-7 text-xs"
+              >
+                Next
+                <ChevronRight className="ml-1 h-3.5 w-3.5" />
+              </Button>
+            </div>
           </div>
         ) : (
           /* MCQ / Written: scrollable content + prev/next nav */

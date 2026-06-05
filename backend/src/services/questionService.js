@@ -1,6 +1,6 @@
 'use strict';
 const { Op } = require('sequelize');
-const { Question, ExamQuestion, Exam, sequelize } = require('../models');
+const { Question, ExamQuestion, Exam, Submission, sequelize } = require('../models');
 const AppError = require('../utils/AppError');
 
 // ── Allowed section → type combinations ──────────────────────────────────
@@ -113,7 +113,7 @@ const deleteQuestion = async (id) => {
 
   const activeUsage = await ExamQuestion.findOne({
     where: { question_id: id },
-    include: [{ model: Exam, as: 'exam', where: { status: 'active' }, required: true }],
+    include: [{ model: Exam, where: { status: 'active' }, required: true }],
   });
   if (activeUsage) {
     throw new AppError(
@@ -122,7 +122,13 @@ const deleteQuestion = async (id) => {
     );
   }
 
-  await question.destroy();
+  // Delete related records in dependency order before removing the question
+  // (no CASCADE on these FKs in the DB, so we do it manually)
+  await sequelize.transaction(async (t) => {
+    await Submission.destroy({ where: { question_id: id }, transaction: t });
+    await ExamQuestion.destroy({ where: { question_id: id }, transaction: t });
+    await question.destroy({ transaction: t });
+  });
 };
 
 const getQuestions = async ({ section, type, difficulty, search, page = 1, limit = 20 } = {}) => {

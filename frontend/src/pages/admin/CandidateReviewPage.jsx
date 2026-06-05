@@ -242,12 +242,12 @@ function WrittenCard({ num, sub, onGrade }) {
 function CodingCard({ num, sub }) {
   const q = sub.question;
   const a = sub.answer;
-  const codeData = typeof a.code_submission === 'object' && a.code_submission
+  const codeData  = typeof a.code_submission === 'object' && a.code_submission
     ? a.code_submission
     : null;
   const language  = codeData?.language ?? null;
   const code      = codeData?.source_code ?? null;
-  const stdout    = codeData?.stdout ?? null;
+  const results   = Array.isArray(codeData?.results) ? codeData.results : [];
   const testCases = Array.isArray(q.test_cases) ? q.test_cases : [];
 
   return (
@@ -309,29 +309,41 @@ function CodingCard({ num, sub }) {
                 <thead>
                   <tr className="border-b bg-muted/50">
                     <th className="px-3 py-2 text-left font-medium w-8">#</th>
+                    <th className="px-3 py-2 text-left font-medium w-6"></th>
                     <th className="px-3 py-2 text-left font-medium">Input</th>
                     <th className="px-3 py-2 text-left font-medium">Expected Output</th>
                     <th className="px-3 py-2 text-left font-medium">Actual Output</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {testCases.map((tc, i) => (
-                    <tr key={i}>
-                      <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
-                      <td className="px-3 py-2">
-                        <pre className="font-mono whitespace-pre-wrap">{tc.input ?? '—'}</pre>
-                      </td>
-                      <td className="px-3 py-2">
-                        <pre className="font-mono whitespace-pre-wrap">{tc.expected_output ?? '—'}</pre>
-                      </td>
-                      <td className="px-3 py-2 text-muted-foreground">
-                        {/* Per-case output not stored; show combined stdout for first case only */}
-                        {i === 0 && stdout
-                          ? <pre className="font-mono whitespace-pre-wrap">{stdout}</pre>
-                          : <span className="italic">—</span>}
-                      </td>
-                    </tr>
-                  ))}
+                  {testCases.map((tc, i) => {
+                    const r = results[i];
+                    const actualOutput = r?.actual_output ?? null;
+                    const isPassed = r?.is_correct ?? null;
+                    return (
+                      <tr key={i} className={cn(
+                        isPassed === true && 'bg-green-50',
+                        isPassed === false && 'bg-red-50',
+                      )}>
+                        <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
+                        <td className="px-3 py-2">
+                          {isPassed === true && <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />}
+                          {isPassed === false && <XCircle className="h-3.5 w-3.5 text-red-500" />}
+                        </td>
+                        <td className="px-3 py-2">
+                          <pre className="font-mono whitespace-pre-wrap">{tc.input ?? '—'}</pre>
+                        </td>
+                        <td className="px-3 py-2">
+                          <pre className="font-mono whitespace-pre-wrap">{tc.expected_output ?? '—'}</pre>
+                        </td>
+                        <td className="px-3 py-2">
+                          {actualOutput != null
+                            ? <pre className={cn('font-mono whitespace-pre-wrap', isPassed === false && 'text-red-700')}>{actualOutput}</pre>
+                            : <span className="italic text-muted-foreground">—</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -520,10 +532,13 @@ export function CandidateReviewPage() {
                 </span>
               </span>
             ) : null}
-            {summary.coding_score > 0 && (
+            {summary.coding_total > 0 && (
               <span>
                 <span className="font-medium">Coding:</span>{' '}
-                <span className="text-blue-600">{summary.coding_score} pts</span>
+                <span className={summary.coding_full_pass > 0 ? 'text-green-600' : 'text-muted-foreground'}>
+                  {summary.coding_full_pass}/{summary.coding_total} fully passed
+                  {summary.coding_partial > 0 && `, ${summary.coding_partial} partial`}
+                </span>
               </span>
             )}
             <span className="ml-auto font-semibold">

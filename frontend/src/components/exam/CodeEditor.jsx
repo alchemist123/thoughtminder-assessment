@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
-import { Play, Upload, Copy, ChevronDown, ChevronRight, Loader2, CheckCircle2 } from 'lucide-react';
+import { Play, Upload, Copy, ChevronDown, ChevronRight, ChevronLeft, PanelLeftClose, PanelLeftOpen, Loader2, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
@@ -196,6 +196,8 @@ export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
 
   const isSubmitted = answers[question.id]?.code_submitted === true;
 
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
+
   // Initialise language from question boilerplate or defaults
   const [activeLanguage, setActiveLanguage] = useState('python');
   const [runResult, setRunResult] = useState(null);
@@ -236,7 +238,6 @@ export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
   // ── Auto-save every 30 seconds ──────────────────────────────────────────────
 
   useEffect(() => {
-    if (isSubmitted) return;
     autoSaveRef.current = setInterval(() => {
       const code = editorRef.current?.getValue();
       if (code != null) {
@@ -245,12 +246,11 @@ export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
       }
     }, 30_000);
     return () => clearInterval(autoSaveRef.current);
-  }, [activeLanguage, isSubmitted, question.id, saveCode]);
+  }, [activeLanguage, question.id, saveCode]);
 
   // ── Language switch ─────────────────────────────────────────────────────────
 
   const handleLanguageChange = (lang) => {
-    if (isSubmitted) return;
     const code = getCurrentCode();
     saveCode(question.id, activeLanguage, code);
     setActiveLanguage(lang);
@@ -336,12 +336,15 @@ export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
 
   return (
     <div className="flex h-full overflow-hidden bg-zinc-950 text-zinc-100">
-      {/* ── Left: problem statement (55%) ────────────────────────────────── */}
-      <div className="w-[55%] shrink-0 border-r border-zinc-700/50 overflow-hidden">
+      {/* ── Left: problem statement (collapsible) ────────────────────────── */}
+      <div
+        className="shrink-0 border-r border-zinc-700/50 overflow-hidden transition-all duration-200"
+        style={{ width: panelCollapsed ? 0 : '40%' }}
+      >
         <ProblemPanel question={question} />
       </div>
 
-      {/* ── Right: editor + output (45%) ──────────────────────────────────── */}
+      {/* ── Right: editor + output ─────────────────────────────────────────*/}
       <div className="flex-1 flex flex-col overflow-hidden relative">
         {/* Confirm overlay */}
         {showConfirm && (
@@ -351,21 +354,19 @@ export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
           />
         )}
 
-        {/* Language tabs */}
-        <div className="border-b border-zinc-700/50 bg-zinc-900 px-3 pt-2 pb-0 shrink-0">
+        {/* Language tabs + panel toggle */}
+        <div className="border-b border-zinc-700/50 bg-zinc-900 px-3 pt-2 pb-0 shrink-0 flex items-center justify-between">
           <Tabs value={activeLanguage} onValueChange={handleLanguageChange}>
             <TabsList className="bg-transparent h-8 gap-0 p-0">
               {LANGUAGES.map((lang) => (
                 <TabsTrigger
                   key={lang}
                   value={lang}
-                  disabled={isSubmitted}
                   className={cn(
                     'rounded-none border-b-2 border-transparent px-4 py-1.5 text-xs font-medium',
                     'data-[state=active]:border-blue-500 data-[state=active]:text-blue-400',
                     'data-[state=active]:bg-transparent data-[state=inactive]:text-zinc-400',
                     'hover:text-zinc-200 transition-colors',
-                    isSubmitted && 'pointer-events-none opacity-60'
                   )}
                 >
                   {LANGUAGE_LABELS[lang]}
@@ -373,6 +374,16 @@ export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
               ))}
             </TabsList>
           </Tabs>
+          <button
+            onClick={() => setPanelCollapsed((p) => !p)}
+            title={panelCollapsed ? 'Show problem' : 'Hide problem'}
+            className="mb-1 flex items-center gap-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors"
+          >
+            {panelCollapsed
+              ? <><PanelLeftOpen className="h-3.5 w-3.5" /><span>Problem</span></>
+              : <><PanelLeftClose className="h-3.5 w-3.5" /><span>Hide</span></>
+            }
+          </button>
         </div>
 
         {/* Monaco editor — fills all available vertical space */}
@@ -394,8 +405,6 @@ export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
               renderLineHighlight: 'line',
               fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
               fontLigatures: true,
-              readOnly: isSubmitted,
-              domReadOnly: isSubmitted,
             }}
           />
         </div>
@@ -409,49 +418,51 @@ export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
 
         {/* Action bar */}
         <div className="flex items-center justify-between border-t border-zinc-700/50 bg-zinc-900 px-3 py-2 shrink-0">
-          {isSubmitted ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/15 px-3 py-1 text-xs font-medium text-green-400">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Code Submitted — read-only view
-            </span>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 border-zinc-600 bg-transparent text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 text-xs"
-                onClick={handleRun}
-                disabled={isLoading}
-              >
-                {runLoading ? (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Play className="mr-1.5 h-3.5 w-3.5 fill-current" />
-                )}
-                Run
-              </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 border-zinc-600 bg-transparent text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 text-xs"
+              onClick={handleRun}
+              disabled={isLoading}
+            >
+              {runLoading ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Play className="mr-1.5 h-3.5 w-3.5 fill-current" />
+              )}
+              Run
+            </Button>
 
-              <Button
-                size="sm"
-                className="h-7 text-xs bg-blue-600 hover:bg-blue-500"
-                onClick={() => setShowConfirm(true)}
-                disabled={isLoading}
-              >
-                {submitLoading ? (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Upload className="mr-1.5 h-3.5 w-3.5" />
-                )}
-                Submit Code
-              </Button>
+            <Button
+              size="sm"
+              className="h-7 text-xs bg-blue-600 hover:bg-blue-500"
+              onClick={() => setShowConfirm(true)}
+              disabled={isLoading}
+            >
+              {submitLoading ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Upload className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              Submit Code
+            </Button>
 
+            {isSubmitted && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/15 px-2.5 py-0.5 text-xs font-medium text-green-400">
+                <CheckCircle2 className="h-3 w-3" />
+                Submitted
+              </span>
+            )}
+
+            {!isSubmitted && (
               <span className="hidden text-xs text-zinc-500 sm:inline">
                 Ctrl+Enter to Run
               </span>
-            </div>
-          )}
+            )}
+          </div>
 
-          {!isSubmitted && lastSaved && (
+          {lastSaved && (
             <span className="text-xs text-zinc-500">
               Saved {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>

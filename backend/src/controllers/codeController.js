@@ -56,7 +56,12 @@ const submit = asyncHandler(async (req, res) => {
   const results      = await judge0Service.runTestCases({ source_code, language, test_cases: question.test_cases });
   const passed_cases = results.filter((r) => r.is_correct).length;
   const total_cases  = results.length;
-  const score        = Number(((passed_cases / total_cases) * DEFAULT_QUESTION_MAX_SCORE).toFixed(2));
+  // 3-tier: all pass → 10 pts, partial → 5 pts, none → 0 pts
+  const score = passed_cases === total_cases
+    ? DEFAULT_QUESTION_MAX_SCORE
+    : passed_cases > 0
+      ? DEFAULT_QUESTION_MAX_SCORE / 2
+      : 0;
 
   const is_correct = passed_cases === total_cases;
 

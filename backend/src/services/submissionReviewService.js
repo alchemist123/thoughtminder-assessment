@@ -19,25 +19,42 @@ const gradeWrittenAnswer = async (candidateExamId, questionId, isCorrect) => {
 
   await submission.update({ is_correct: isCorrect });
 
-  // Recalculate score: (MCQ correct + Written correct) / (MCQ total + Written total) * 100
-  const scoredTypes = ['mcq', 'written'];
-  const allScoredQuestions = await ExamQuestion.findAll({
+  // Recalculate unified score: MCQ + written + coding all contribute equally
+  const allExamQuestionsRaw = await ExamQuestion.findAll({
     where: { exam_id: session.exam_id },
-    include: [{
-      model: Question,
-      as: 'question',
-      attributes: ['id', 'type'],
-      where: { type: scoredTypes },
-      required: true,
-    }],
+    include: [{ model: Question, as: 'question', attributes: ['id', 'type'], required: true }],
   });
-  const scoredIds = allScoredQuestions.map((eq) => eq.question_id);
+  const allExamQuestions = allExamQuestionsRaw.map((eq) => eq.toJSON());
+  const totalQuestions   = allExamQuestions.length;
 
-  if (scoredIds.length > 0) {
-    const correctCount = await Submission.count({
-      where: { candidate_exam_id: candidateExamId, question_id: scoredIds, is_correct: true },
-    });
-    const newScore = Number(((correctCount / scoredIds.length) * 100).toFixed(2));
+  if (totalQuestions > 0) {
+    const mcqWrittenIds = allExamQuestions
+      .filter((eq) => ['mcq', 'written'].includes(eq.question?.type))
+      .map((eq) => eq.question_id);
+    const codingIds = allExamQuestions
+      .filter((eq) => eq.question?.type === 'coding')
+      .map((eq) => eq.question_id);
+
+    let totalCorrect = 0;
+
+    if (mcqWrittenIds.length > 0) {
+      totalCorrect += await Submission.count({
+        where: { candidate_exam_id: candidateExamId, question_id: mcqWrittenIds, is_correct: true },
+      });
+    }
+
+    if (codingIds.length > 0) {
+      const codingSubs = await Submission.findAll({
+        where: { candidate_exam_id: candidateExamId, question_id: codingIds },
+        attributes: ['score'],
+      });
+      totalCorrect += codingSubs.reduce(
+        (sum, s) => sum + (s.score != null ? parseFloat(s.score) / 10 : 0),
+        0
+      );
+    }
+
+    const newScore = Number(((totalCorrect / totalQuestions) * 100).toFixed(2));
     await session.update({ score: newScore });
     return { is_correct: isCorrect, new_score: newScore };
   }
@@ -88,10 +105,19 @@ const getCandidateSubmissions = async (candidateExamId) => {
     where: { exam_id: sessionObj.exam_id },
   });
 
+  // Total coding questions in exam (for denominator in display)
+  const totalCodingQuestions = await ExamQuestion.count({
+    where: { exam_id: sessionObj.exam_id },
+    include: [{ model: Question, as: 'question', where: { type: 'coding' }, required: true }],
+  });
+
   // Build structured array and accumulate summary counters
-  let mcqCorrect = 0;
-  let mcqTotal   = 0;
-  let codingScore = 0;
+  let mcqCorrect       = 0;
+  let mcqTotal         = 0;
+  let writtenCorrect   = 0;
+  let codingFullPass   = 0;    // all test cases passed (score = 10)
+  let codingPartial    = 0;    // some test cases passed (score = 5)
+  let codingNormalized = 0;    // 0–1 per question — for score formula
 
   const submissions = rawSubmissions
     .map((sub) => sub.toJSON())
@@ -110,8 +136,15 @@ const getCandidateSubmissions = async (candidateExamId) => {
         if (isCorrect === true) mcqCorrect++;
       }
 
+      if (q.type === 'written') {
+        if (isCorrect === true) writtenCorrect++;
+      }
+
       if (q.type === 'coding' && s.score != null) {
-        codingScore += parseFloat(s.score);
+        const pts = parseFloat(s.score);
+        codingNormalized += pts / 10;
+        if (pts >= 10) codingFullPass++;
+        else if (pts > 0) codingPartial++;
       }
 
       return {
@@ -121,21 +154,32 @@ const getCandidateSubmissions = async (candidateExamId) => {
           type:          q.type,
           difficulty:    q.difficulty,
           question_text: q.question_text,
-          options:       q.options       ?? null,
+          options:       q.options        ?? null,
           correct_answer: q.correct_answer ?? null,
-          test_cases:    q.test_cases    ?? null,
+          test_cases:    q.test_cases     ?? null,
         },
         answer: {
-          selected_option: s.selected_option  ?? null,
-          answer_text:     s.answer_text      ?? null,
-          code_submission: s.code_submission  ?? null,
-          is_correct:      isCorrect          ?? null,
+          selected_option: s.selected_option ?? null,
+          answer_text:     s.answer_text     ?? null,
+          code_submission: s.code_submission ?? null,
+          is_correct:      isCorrect         ?? null,
           score:           s.score != null ? parseFloat(s.score) : null,
         },
       };
     });
 
-  const finalScore = sessionObj.score != null ? parseFloat(sessionObj.score) : null;
+  // Compute accurate score from submissions (fixes stale DB values from old formula)
+  const computedScore = totalQuestions > 0
+    ? Number(((mcqCorrect + writtenCorrect + codingNormalized) / totalQuestions * 100).toFixed(2))
+    : null;
+
+  // Persist if the stored score is out of date
+  const storedScore = sessionObj.score != null ? parseFloat(sessionObj.score) : null;
+  if (computedScore !== null && computedScore !== storedScore) {
+    await session.update({ score: computedScore });
+  }
+
+  const finalScore = computedScore ?? storedScore;
 
   return {
     candidateExam: {
@@ -161,11 +205,13 @@ const getCandidateSubmissions = async (candidateExamId) => {
     },
     submissions,
     summary: {
-      total_questions: totalQuestions,
-      answered:        submissions.length,
-      mcq_correct:     mcqCorrect,
-      mcq_total:       mcqTotal,
-      coding_score:    parseFloat(codingScore.toFixed(2)),
+      total_questions:       totalQuestions,
+      answered:              submissions.length,
+      mcq_correct:           mcqCorrect,
+      mcq_total:             mcqTotal,
+      coding_total:          totalCodingQuestions,
+      coding_full_pass:      codingFullPass,
+      coding_partial:        codingPartial,
       final_score:     finalScore,
     },
   };
