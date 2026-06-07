@@ -224,6 +224,17 @@ const useExamSessionStore = create(
         });
       },
 
+      // ── refreshQuestions ─────────────────────────────────────────────────
+      // Updates only the questions array (e.g. to pick up boilerplate changes
+      // after admin edits) without disturbing timer, answers, or other state.
+      refreshQuestions: (examQuestions) => {
+        if (!Array.isArray(examQuestions) || examQuestions.length === 0) return;
+        const questions = [...examQuestions]
+          .sort((a, b) => a.order_index - b.order_index)
+          .map((eq) => ({ ...eq.question, order_index: eq.order_index }));
+        set({ questions });
+      },
+
       // ── computed helpers ─────────────────────────────────────────────────
 
       getAnsweredCount: () => {

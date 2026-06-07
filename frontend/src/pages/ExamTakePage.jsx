@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import api from '@/lib/axios';
 import { ChevronLeft, ChevronRight, Send, AlertTriangle, Video, VideoOff, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ExamTimer } from '@/components/exam/ExamTimer';
@@ -34,6 +35,7 @@ export function ExamTakePage() {
     timeRemaining,
     saveAnswer,
     setCurrentQuestion,
+    refreshQuestions,
   } = useExamSessionStore();
 
   const [submitOpen, setSubmitOpen] = useState(false);
@@ -47,11 +49,20 @@ export function ExamTakePage() {
     examId: exam?.id,
   });
 
-  // Guard: if no active session for this exam, redirect back to access page
+  // Guard: if no active session for this exam, redirect back to access page.
+  // On the resume path (session already in store), silently re-fetch fresh
+  // exam data so any boilerplate edits made by the admin are reflected.
   useEffect(() => {
     if (!candidateExam || !exam || exam.id !== candidateExam.exam_id) {
       navigate(`/exam/${examId}`, { replace: true });
+      return;
     }
+    api.post('/exam/start', { exam_id: examId })
+      .then(({ data }) => {
+        const freshQuestions = data.data?.exam?.examQuestions;
+        if (freshQuestions) refreshQuestions(freshQuestions);
+      })
+      .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Redirect on manual submit (TimeUpOverlay handles the time-up path)

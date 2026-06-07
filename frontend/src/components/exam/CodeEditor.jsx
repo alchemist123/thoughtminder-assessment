@@ -225,7 +225,10 @@ export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
   const getBoilerplate = useCallback(
     (lang) => {
       const stored = codeByQuestion[question.id]?.[lang];
-      if (stored !== undefined && stored !== null) return stored;
+      // Only use stored code if the candidate actually typed something;
+      // an empty string falls back to the question boilerplate so admin
+      // edits are visible until the candidate starts writing.
+      if (stored != null && stored.trim() !== '') return stored;
       return question.boilerplate?.[lang] ?? EMPTY_BOILERPLATE[lang] ?? '';
     },
     [codeByQuestion, question.id, question.boilerplate]
