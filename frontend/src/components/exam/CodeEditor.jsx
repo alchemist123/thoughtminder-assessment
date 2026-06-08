@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
-import { Play, Upload, Copy, ChevronDown, ChevronRight, ChevronLeft, PanelLeftClose, PanelLeftOpen, Loader2, CheckCircle2 } from 'lucide-react';
+import { Play, ListChecks, Copy, ChevronDown, ChevronRight, ChevronLeft, PanelLeftClose, PanelLeftOpen, Loader2, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
@@ -171,9 +171,9 @@ function ConfirmSubmitOverlay({ onConfirm, onCancel }) {
   return (
     <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="rounded-xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl w-80 space-y-4">
-        <h4 className="font-semibold text-sm text-zinc-100">Submit code?</h4>
+        <h4 className="font-semibold text-sm text-zinc-100">Run all test cases?</h4>
         <p className="text-xs text-zinc-400 leading-relaxed">
-          Your code will be evaluated against all test cases. You can re-submit as long as the exam
+          Your code will be evaluated against all test cases. You can run again as long as the exam
           is active.
         </p>
         <div className="flex justify-end gap-2">
@@ -181,7 +181,7 @@ function ConfirmSubmitOverlay({ onConfirm, onCancel }) {
             Cancel
           </Button>
           <Button size="sm" onClick={onConfirm}>
-            Submit Code
+            Run Test Cases
           </Button>
         </div>
       </div>
@@ -257,6 +257,8 @@ export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
     const code = getCurrentCode();
     saveCode(question.id, activeLanguage, code);
     setActiveLanguage(lang);
+    // Reset run result so the gate re-evaluates for the new language
+    setRunResult(null);
   };
 
   // ── Run ─────────────────────────────────────────────────────────────────────
@@ -337,6 +339,9 @@ export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
   const isLoading = runLoading || submitLoading;
   const activeOutput = outputType === 'run' ? runResult : submitResult;
 
+  // "Run Test Cases" is only unlocked after a clean run (no compile/runtime errors)
+  const runPassed = runResult?.status_id === 3;
+
   return (
     <div className="flex h-full overflow-hidden bg-zinc-950 text-zinc-100">
       {/* ── Left: problem statement (collapsible) ────────────────────────── */}
@@ -397,6 +402,7 @@ export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
             value={getBoilerplate(activeLanguage)}
             theme="vs-dark"
             onMount={handleEditorDidMount}
+            onChange={() => setRunResult(null)}
             options={{
               fontSize: 14,
               minimap: { enabled: false },
@@ -439,16 +445,17 @@ export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
 
             <Button
               size="sm"
-              className="h-7 text-xs bg-blue-600 hover:bg-blue-500"
+              className="h-7 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed"
               onClick={() => setShowConfirm(true)}
-              disabled={isLoading}
+              disabled={isLoading || !runPassed}
+              title={!runPassed ? 'Run your code first — it must execute without errors' : undefined}
             >
               {submitLoading ? (
                 <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Upload className="mr-1.5 h-3.5 w-3.5" />
+                <ListChecks className="mr-1.5 h-3.5 w-3.5" />
               )}
-              Submit Code
+              Run Test Cases
             </Button>
 
             {isSubmitted && (
@@ -458,7 +465,13 @@ export function CodeEditor({ question, candidateExamId, onCodeSubmit }) {
               </span>
             )}
 
-            {!isSubmitted && (
+            {!isSubmitted && !runPassed && (
+              <span className="hidden text-xs text-zinc-500 sm:inline">
+                Run first to unlock test cases
+              </span>
+            )}
+
+            {!isSubmitted && runPassed && (
               <span className="hidden text-xs text-zinc-500 sm:inline">
                 Ctrl+Enter to Run
               </span>

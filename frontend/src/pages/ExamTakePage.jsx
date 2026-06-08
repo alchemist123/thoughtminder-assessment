@@ -9,6 +9,7 @@ import { QuestionDisplay } from '@/components/exam/QuestionDisplay';
 import { CodeEditor } from '@/components/exam/CodeEditor';
 import { SubmitDialog } from '@/components/exam/SubmitDialog';
 import { TimeUpOverlay } from '@/components/exam/TimeUpOverlay';
+import { CodingRulesModal } from '@/components/exam/CodingRulesModal';
 import useExamSessionStore, { isAnswered } from '@/store/examSessionStore';
 import { useProctoring } from '@/hooks/useProctoring';
 
@@ -372,6 +373,9 @@ export function ExamTakePage() {
 
       {/* Submit confirmation dialog */}
       <SubmitDialog open={submitOpen} onOpenChange={setSubmitOpen} />
+
+      {/* Coding rules — shown once per session on first coding question */}
+      {currentQuestion?.type === 'coding' && <CodingRulesModal />}
     </div>
   );
 }

@@ -13,16 +13,33 @@ const PENDING_STATUSES = new Set([1, 2]); // 1 = In Queue, 2 = Processing
 
 // Dedicated axios instance so we don't pollute the default config
 const judgeAxios = axios.create({
-  // baseURL is resolved at call time from env so hot-reload works in dev
   timeout: 12000,
 });
 
+// ── Base64 helpers ────────────────────────────────────────────────────────
+// Always use base64 encoding so arbitrary source code and stdin
+// (including non-ASCII chars from editors/clipboard) never triggers
+// Judge0's "cannot be converted to UTF-8" 400 error.
+
+const b64encode = (str) => Buffer.from(str ?? '', 'utf8').toString('base64');
+const b64decode = (str) => (str ? Buffer.from(str, 'base64').toString('utf8') : null);
+
 // ── Error normalisation ───────────────────────────────────────────────────
+
+const extractJudge0Message = (data) => {
+  if (!data) return null;
+  if (typeof data === 'string') return data;
+  if (data.message) return data.message;
+  if (data.error)   return data.error;
+  // Validation errors: { field: ['message'] }
+  const firstVal = Object.values(data)[0];
+  if (Array.isArray(firstVal)) return `${Object.keys(data)[0]}: ${firstVal[0]}`;
+  return null;
+};
 
 const normaliseError = (err) => {
   if (err instanceof AppError) throw err;
 
-  // Network-level failures (no HTTP response received)
   if (!err.response) {
     const code = err.code ?? '';
     if (code === 'ECONNREFUSED') {
@@ -34,9 +51,10 @@ const normaliseError = (err) => {
     throw new AppError(`Code execution service unreachable: ${err.message}`, 503);
   }
 
-  // HTTP error response from Judge0
+  const detail = extractJudge0Message(err.response.data) ?? 'unknown error';
+  console.error('[Judge0 error]', err.response.status, JSON.stringify(err.response.data));
   throw new AppError(
-    `Code execution service returned ${err.response.status}: ${err.response.data?.message ?? 'unknown error'}`,
+    `Code execution service returned ${err.response.status}: ${detail}`,
     502
   );
 };
@@ -44,6 +62,10 @@ const normaliseError = (err) => {
 // ── Core methods ──────────────────────────────────────────────────────────
 
 const submitCode = async ({ source_code, language, stdin = '' }) => {
+  if (!source_code?.trim()) {
+    throw new AppError('source_code is empty — write some code before running', 400);
+  }
+
   const language_id = LANGUAGE_IDS[language];
   if (!language_id) {
     throw new AppError(
@@ -56,13 +78,13 @@ const submitCode = async ({ source_code, language, stdin = '' }) => {
     const { data } = await judgeAxios.post(
       `${process.env.JUDGE0_URL}/submissions`,
       {
-        source_code,
+        source_code:    b64encode(source_code),
         language_id,
-        stdin: stdin ?? '',
-        cpu_time_limit:  5,
-        memory_limit:    128000,
+        stdin:          b64encode(stdin),
+        cpu_time_limit: 5,
+        memory_limit:   128000,
       },
-      { params: { base64_encoded: false, wait: false } }
+      { params: { base64_encoded: true, wait: false } }
     );
     return { token: data.token };
   } catch (err) {
@@ -74,15 +96,15 @@ const getResult = async (token) => {
   try {
     const { data } = await judgeAxios.get(
       `${process.env.JUDGE0_URL}/submissions/${token}`,
-      { params: { base64_encoded: false } }
+      { params: { base64_encoded: true } }
     );
     return {
-      status:         data.status,           // { id, description }
-      stdout:         data.stdout  ?? null,
-      stderr:         data.stderr  ?? null,
-      compile_output: data.compile_output ?? null,
-      time:           data.time    ?? null,
-      memory:         data.memory  ?? null,
+      status:         data.status,
+      stdout:         b64decode(data.stdout),
+      stderr:         b64decode(data.stderr),
+      compile_output: b64decode(data.compile_output),
+      time:           data.time   ?? null,
+      memory:         data.memory ?? null,
     };
   } catch (err) {
     normaliseError(err);
@@ -128,13 +150,12 @@ const runTestCases = async ({ source_code, language, test_cases }) => {
   const results = [];
 
   for (const tc of test_cases) {
-    const { token } = await submitCode({ source_code, language, stdin: String(tc.input) });
+    const { token } = await submitCode({ source_code, language, stdin: String(tc.input ?? '') });
     const result    = await waitForResult(token);
 
     const actual   = result.stdout?.trim() ?? '';
     const expected = String(tc.expected_output).trim();
 
-    // Accepted (status 3) AND output matches
     const is_correct = result.status.id === 3 && actual === expected;
 
     results.push({
