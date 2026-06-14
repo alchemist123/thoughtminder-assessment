@@ -68,6 +68,23 @@ export function CodingRulesModal() {
   const handleClose = () => {
     sessionStorage.setItem(SESSION_KEY, '1');
     setOpen(false);
+
+    // When the student dismisses this modal with Enter or Space, Radix
+    // restores focus to the element that was active before the dialog opened
+    // (often the Submit button).  The keyup for that same keystroke then fires
+    // on the restored-focus element, triggering an accidental submission.
+    //
+    // Fix: intercept and discard the next Enter/Space keyup at the window
+    // capture phase, before it reaches any button.  The 500 ms timeout removes
+    // the guard if no relevant keyup arrives (e.g. the student used a mouse).
+    const suppressKeyup = (ev) => {
+      if (ev.key === ' ' || ev.key === 'Enter') {
+        ev.stopImmediatePropagation();
+        window.removeEventListener('keyup', suppressKeyup, true);
+      }
+    };
+    window.addEventListener('keyup', suppressKeyup, true);
+    setTimeout(() => window.removeEventListener('keyup', suppressKeyup, true), 500);
   };
 
   return (
@@ -95,7 +112,7 @@ export function CodingRulesModal() {
         </div>
 
         <DialogFooter>
-          <Button className="w-full" onClick={handleClose}>
+          <Button type="button" className="w-full" onClick={handleClose}>
             Got it — Start Coding
           </Button>
         </DialogFooter>
