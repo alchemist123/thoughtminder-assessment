@@ -71,7 +71,7 @@ export function LaunchExamDialog({ open, onOpenChange, examId, examTitle, preSel
         });
         if (!cancelled) {
           setCandidates(data?.candidates ?? []);
-          setTotal(data?.total ?? 0);
+          setTotal(data?.pagination?.total ?? 0);
         }
       } catch {
         if (!cancelled) setCandidates([]);
