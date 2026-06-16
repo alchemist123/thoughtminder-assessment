@@ -93,10 +93,7 @@ export function GenerateLinkDialog() {
 
                 <div className="rounded-md bg-muted p-3 text-sm space-y-1">
                   <p>
-                    This link expires in <strong>7 days</strong>.
-                  </p>
-                  <p className="text-muted-foreground">
-                    Multiple candidates can use this link.
+                    This link expires in <strong>20 minutes</strong>.
                   </p>
                 </div>
               </>
