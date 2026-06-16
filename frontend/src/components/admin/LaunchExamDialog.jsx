@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, X, Rocket } from 'lucide-react';
 import {
   Dialog,
@@ -82,6 +82,19 @@ export function LaunchExamDialog({ open, onOpenChange, examId, examTitle, preSel
     fetch();
     return () => { cancelled = true; };
   }, [open, debouncedSearch, stream, batch, page]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pageNumbers = useMemo(() => {
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+    const pages = [];
+    pages.push(1);
+    if (page > 3) pages.push('…');
+    for (let i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) {
+      pages.push(i);
+    }
+    if (page < totalPages - 2) pages.push('…');
+    pages.push(totalPages);
+    return pages;
+  }, [page, totalPages]);
 
   const allOnPage =
     candidates.length > 0 && candidates.every((c) => selected.has(c.id));
@@ -292,29 +305,67 @@ export function LaunchExamDialog({ open, onOpenChange, examId, examTitle, preSel
         </div>
 
         {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="px-6 py-2 border-t flex items-center justify-center gap-3">
+        <div className="px-6 py-2 border-t flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">
+            {total === 0
+              ? 'No candidates'
+              : `Showing ${(page - 1) * LIMIT + 1}–${Math.min(page * LIMIT, total)} of ${total}`}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page === 1 || fetchLoading}
+              onClick={() => setPage(1)}
+              className="px-2"
+            >
+              «
+            </Button>
             <Button
               variant="outline"
               size="sm"
               disabled={page === 1 || fetchLoading}
               onClick={() => setPage((p) => p - 1)}
+              className="px-2"
             >
-              Previous
+              ‹
             </Button>
-            <span className="text-xs text-muted-foreground">
-              Page {page} of {totalPages}
-            </span>
+            {pageNumbers.map((p, i) =>
+              p === '…' ? (
+                <span key={`ellipsis-${i}`} className="px-1 text-xs text-muted-foreground select-none">…</span>
+              ) : (
+                <Button
+                  key={p}
+                  variant={p === page ? 'default' : 'outline'}
+                  size="sm"
+                  disabled={fetchLoading}
+                  onClick={() => setPage(p)}
+                  className="px-2.5 min-w-[32px]"
+                >
+                  {p}
+                </Button>
+              )
+            )}
             <Button
               variant="outline"
               size="sm"
               disabled={page === totalPages || fetchLoading}
               onClick={() => setPage((p) => p + 1)}
+              className="px-2"
             >
-              Next
+              ›
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page === totalPages || fetchLoading}
+              onClick={() => setPage(totalPages)}
+              className="px-2"
+            >
+              »
             </Button>
           </div>
-        )}
+        </div>
 
         <DialogFooter className="px-6 py-4 border-t">
           <Button
