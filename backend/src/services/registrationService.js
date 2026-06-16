@@ -17,7 +17,7 @@ const checkTokenValidity = async (token) => {
 
 const generateRegistrationLink = async (adminId) => {
   const token = crypto.randomBytes(32).toString('hex');
-  const expires_at = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const expires_at = new Date(Date.now() + 20 * 60 * 1000);
 
   const record = await RegistrationLink.create({
     token,
